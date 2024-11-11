@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sky Diver - Cloud Dodger</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #87CEEB;
+        }
+        #gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        .score-board {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 2;
+            display: flex;
+            gap: 20px;
+        }
+        .score-board div {
+            font-size: 20px;
+            font-weight: bold;
+            color: #fff;
+            background: linear-gradient(90deg, #ff6347, #ff4500);
+            padding: 10px 20px;
+            border-radius: 5px;
+            box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.5);
+            transition: background 0.3s ease;
+        }
+        .score-board div:hover {
+            background: linear-gradient(90deg, #ff4500, #ff6347);
+        }
+        #restartBtn {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 22px;
+            padding: 20px 40px;
+            background-color: #28a745;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0px 10px 30px rgba(0, 0, 0, 0.3);
+            display: none;
+            cursor: pointer;
+            text-align: center;
+            z-index: 3;
+            font-weight: bold;
+            transition: background 0.3s ease, transform 0.2s ease;
+        }
+        #restartBtn:hover {
+            background-color: #218838;
+            transform: translate(-50%, -50%) scale(1.1);
+        }
+        #restartBtn span {
+            font-size: 18px;
+        }
+        #restartBtn:focus {
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div class="score-board">
+        <div>Score: <span id="score">0</span></div>
+        <div>High Score: <span id="highScore">0</span></div>
+    </div>
+    <button id="restartBtn">
+        Restart <br><span id="currentScoreDisplay">Score: 0</span>
+    </button>
+
+    <audio id="coinSound" src="coin.mp3" preload="auto"></audio>
+    <audio id="hitSound" src="hit.mp3" preload="auto"></audio>
+    <audio id="bgm" src="gamebg.mp3" preload="auto" loop></audio>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const coinSound = document.getElementById("coinSound");
+        const hitSound = document.getElementById("hitSound");
+        const bgm = document.getElementById("bgm");
+
+        let score = 0;
+        let highScore = localStorage.getItem("highScore") || 0;
+        let gameActive = true;
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const playerImg = new Image();
+        playerImg.src = 'parachuter.png';
+
+        const obstacleImg1 = new Image();
+        obstacleImg1.src = 'obstacle1.png';  // First type of obstacle
+
+        const obstacleImg2 = new Image();
+        obstacleImg2.src = 'obstacle2.png';  // Second type of obstacle
+
+        const obstacleImg3 = new Image();
+        obstacleImg3.src = 'obstacle3.png';  // Third type of obstacle
+
+        const coinImg = new Image();
+        coinImg.src = 'coin.png';
+
+        let player = {
+            x: canvas.width / 2,
+            y: canvas.height / 10,
+            width: 50,
+            height: 50,
+            speed: 10,
+            dragging: false,
+            dragOffsetX: 0,
+            dragOffsetY: 0
+        };
+
+        let scrollSpeed = 2;
+        let obstacles = [];
+        let coins = [];
+
+        function createObstaclesAndCoins() {
+            for (let i = 0; i < 5; i++) {
+                let obstacleType = Math.floor(Math.random() * 3); // Randomly select obstacle type
+                let obstacle = {
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    width: 50,
+                    height: 50,
+                    type: obstacleType
+                };
+                obstacles.push(obstacle);
+                coins.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    width: 30,
+                    height: 30
+                });
+            }
+        }
+
+        playerImg.onload = function() {
+            createObstaclesAndCoins();
+            document.getElementById('highScore').innerText = highScore;
+            bgm.play();  // Play background music
+            gameLoop();
+        };
+
+        // Smooth mobile control with dragging
+        canvas.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            if (touch) {
+                const touchX = touch.clientX;
+                const touchY = touch.clientY;
+                if (touchX >= player.x && touchX <= player.x + player.width &&
+                    touchY >= player.y && touchY <= player.y + player.height) {
+                    player.dragging = true;
+                    player.dragOffsetX = touchX - player.x;
+                    player.dragOffsetY = touchY - player.y;
+                }
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (player.dragging) {
+                const touch = e.touches[0];
+                if (touch) {
+                    let newX = touch.clientX - player.dragOffsetX;
+                    let newY = touch.clientY - player.dragOffsetY;
+                    if (newX >= 0 && newX <= canvas.width - player.width) player.x = newX;
+                    if (newY >= 0 && newY <= canvas.height - player.height) player.y = newY;
+                }
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            player.dragging = false;
+        });
+
+        // Arrow keys control for laptop/desktop
+        document.addEventListener('keydown', (e) => {
+            switch (e.key) {
+                case 'ArrowLeft':
+                    if (player.x > 0) player.x -= player.speed;
+                    break;
+                case 'ArrowRight':
+                    if (player.x < canvas.width - player.width) player.x += player.speed;
+                    break;
+                case 'ArrowUp':
+                    if (player.y > 0) player.y -= player.speed;
+                    break;
+                case 'ArrowDown':
+                    if (player.y < canvas.height - player.height) player.y += player.speed;
+                    break;
+            }
+        });
+
+
+
+        function gameLoop() {
+            if (!gameActive) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (player.y < canvas.height - player.height) {
+                player.y += 1;
+            }
+
+            ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+
+            obstacles.forEach((obstacle) => {
+                obstacle.y += scrollSpeed;
+                if (obstacle.y > canvas.height) {
+                    obstacle.y = -50;
+                    obstacle.x = Math.random() * canvas.width;
+                }
+
+                switch (obstacle.type) {
+                    case 0:
+                        ctx.drawImage(obstacleImg1, obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                        break;
+                    case 1:
+                        ctx.drawImage(obstacleImg2, obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                        break;
+                    case 2:
+                        ctx.drawImage(obstacleImg3, obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+                        break;
+                }
+
+                if (detectCollision(player, obstacle)) {
+                    hitSound.play(); // Play hit sound
+                    gameOver();
+                }
+            });
+
+            coins.forEach((coin) => {
+                coin.y += scrollSpeed;
+                if (coin.y > canvas.height) {
+                    coin.y = -50;
+                    coin.x = Math.random() * canvas.width;
+                }
+                ctx.drawImage(coinImg, coin.x, coin.y, coin.width, coin.height);
+
+                if (detectCollision(player, coin)) {
+                    coinSound.play(); // Play coin sound
+                    score += 1;
+                    document.getElementById('score').innerText = score;
+                    document.getElementById('currentScoreDisplay').innerText = `Score: ${score}`;
+                    coins.splice(coins.indexOf(coin), 1);
+                    coins.push({
+                        x: Math.random() * canvas.width,
+                        y: -50,
+                        width: 30,
+                        height: 30
+                    });
+                }
+            });
+
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem("highScore", highScore);
+                document.getElementById('highScore').innerText = highScore;
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function detectCollision(player, entity) {
+            return !(player.x > entity.x + entity.width ||
+                     player.x + player.width < entity.x ||
+                     player.y > entity.y + entity.height ||
+                     player.y + player.height < entity.y);
+        }
+
+        function gameOver() {
+            gameActive = false;
+            hitSound.play();
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem("highScore", highScore);
+            }
+            document.getElementById('highScore').innerText = highScore;
+            document.getElementById('restartBtn').style.display = 'block';
+        }
+
+        document.getElementById('restartBtn').addEventListener('click', () => {
+            score = 0;
+            document.getElementById('score').innerText = score;
+            document.getElementById('currentScoreDisplay').innerText = `Score: ${score}`;
+            gameActive = true;
+            obstacles = [];
+            coins = [];
+            createObstaclesAndCoins();
+            document.getElementById('restartBtn').style.display = 'none';
+            gameLoop();
+        });
+    </script>
+</body>
+</html>
